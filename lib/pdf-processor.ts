@@ -313,6 +313,112 @@ export async function imagesToPdf(files: File[]): Promise<ProcessingResult> {
   }
 }
 
+// Add text watermark to PDF
+export async function addTextWatermark(
+  file: File,
+  text: string,
+  options: {
+    position?: 'center' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+    fontSize?: number
+    opacity?: number
+    rotation?: number
+  } = {}
+): Promise<ProcessingResult> {
+  try {
+    const { position = 'center', fontSize = 48, opacity = 0.3, rotation = -45 } = options
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await PDFDocument.load(arrayBuffer)
+    const pages = pdf.getPages()
+    const { rgb } = await import('pdf-lib')
+
+    for (const page of pages) {
+      const { width, height } = page.getSize()
+      
+      let x: number, y: number
+      switch (position) {
+        case 'top-left':
+          x = 50
+          y = height - 50
+          break
+        case 'top-right':
+          x = width - 50 - (text.length * fontSize * 0.5)
+          y = height - 50
+          break
+        case 'bottom-left':
+          x = 50
+          y = 50
+          break
+        case 'bottom-right':
+          x = width - 50 - (text.length * fontSize * 0.5)
+          y = 50
+          break
+        case 'center':
+        default:
+          x = width / 2 - (text.length * fontSize * 0.25)
+          y = height / 2
+          break
+      }
+
+      page.drawText(text, {
+        x,
+        y,
+        size: fontSize,
+        color: rgb(0.5, 0.5, 0.5),
+        opacity,
+        rotate: { type: 'degrees' as const, angle: rotation },
+      })
+    }
+
+    const pdfBytes = await pdf.save()
+    return {
+      success: true,
+      data: pdfBytes,
+      filename: 'watermarked.pdf',
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to add watermark',
+    }
+  }
+}
+
+// Crop PDF pages
+export async function cropPdf(
+  file: File,
+  margins: { top: number; right: number; bottom: number; left: number }
+): Promise<ProcessingResult> {
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await PDFDocument.load(arrayBuffer)
+    const pages = pdf.getPages()
+
+    for (const page of pages) {
+      const { width, height } = page.getSize()
+      
+      // Crop by adjusting the crop box
+      page.setCropBox(
+        margins.left,
+        margins.bottom,
+        width - margins.left - margins.right,
+        height - margins.top - margins.bottom
+      )
+    }
+
+    const pdfBytes = await pdf.save()
+    return {
+      success: true,
+      data: pdfBytes,
+      filename: 'cropped.pdf',
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to crop PDF',
+    }
+  }
+}
+
 // Download helper
 export function downloadPdf(data: Uint8Array, filename: string) {
   const blob = new Blob([data], { type: 'application/pdf' })
